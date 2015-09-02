@@ -18,6 +18,16 @@
                 </p>
             </div>
         </div>
+        <div class="form-group row">
+            <label class="control-label">{_ Username _}</label>
+            <input type="text" id="{{ #url }}" name="basic_auth_user" 
+                   value="{{ m.config.mod_logging_elastic.basic_auth_user.value|escape }}" class="col-lg-4 col-md-4 form-control" />
+        </div>
+        <div class="form-group row">
+            <label class="control-label">{_ Password _}</label>
+            <input type="text" id="{{ #url }}" name="basic_auth_pw" 
+                   value="{{ m.config.mod_logging_elastic.basic_auth_pw.value|escape }}" class="col-lg-4 col-md-4 form-control" />
+        </div>
     </div>
 
     <div class="modal-footer">

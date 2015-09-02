@@ -242,7 +242,11 @@ commit_batch(Type, List, Site, Url) ->
             ++ "/"
             ++ z_utils:url_encode(z_convert:to_list(Type))
             ++ "/_bulk",
-    case httpc:request(post, {z_convert:to_list(Url1), [], "application/json", Body}, [], httpc_options()) of
+    case httpc:request(post, 
+                       {z_convert:to_list(Url1), [], "application/json", Body},
+                       httpc_headers(Site),
+                       httpc_options()) 
+    of
         {ok, {{_Http, 200, _Ok}, _Hs, _Body}} ->
             lager:debug("[~p] Added ~p log events to Elastic Search index 'zotonic-log-~p'", [Site, Site]),
             ok;
@@ -267,7 +271,11 @@ define_mappings_1([Type|Types], Site, Url, Added) ->
             ++ "zotonic-log-" ++ z_utils:url_encode(z_convert:to_list(Site)) % Add the site as ES index
             ++ "/_mapping/"
             ++ z_utils:url_encode(z_convert:to_list(Type)),
-    case httpc:request(post, {z_convert:to_list(Url1), [], "application/json", Body}, [], httpc_options()) of
+    case httpc:request(post, 
+                       {z_convert:to_list(Url1), [], "application/json", Body}, 
+                       httpc_headers(Site),
+                       httpc_options())
+    of
         {ok, {{_Http, 200, _Ok}, _Hs, _Body}} ->
             lager:debug("[~p] Added _timestamp mapping for ~p log events to Elastic Search index 'zotonic-log-~p'", [Site, Type, Site]),
             define_mappings_1(Types, Site, Url, [Type|Added]);
@@ -287,12 +295,31 @@ httpc_options() ->
         {body_format, binary}
     ].
 
+httpc_headers(Site) ->
+    Context = z_context:new(Site),
+    case {m_config:get_value(?MODULE, basic_auth_user, Context),
+          m_config:get_value(?MODULE, basic_auth_pw, Context)}
+    of
+        {undefined,_} ->
+            [];
+        {_,undefined} ->
+            [];
+        {<<>>,<<>>} ->
+            [];
+        {User,Pass} ->
+            [ {"Authorization", "Basic "++base64:encode_to_string(iolist_to_binary([User,$:,Pass]))} ]
+    end.
+
 ensure_index(Site, Url) ->
     Body = <<>>,
     Url1 = z_string:trim_right(z_convert:to_list(Url), $/)
             ++ "/"
             ++ "zotonic-log-" ++ z_utils:url_encode(z_convert:to_list(Site)), % Add the site as ES index
-    case httpc:request(post, {z_convert:to_list(Url1), [], "application/json", Body}, [], httpc_options()) of
+    case httpc:request(post,
+                       {z_convert:to_list(Url1), [], "application/json", Body},
+                       httpc_headers(Site),
+                       httpc_options()) 
+    of
         {ok, {{_Http, 200, _Ok}, _Hs, _Body}} ->
             lager:debug("[~p] Added index 'zotonic-~p' to Elastic Search", [Site, Site]),
             ok;
