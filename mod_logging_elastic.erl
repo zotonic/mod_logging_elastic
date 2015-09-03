@@ -243,8 +243,8 @@ commit_batch(Type, List, Site, Url) ->
             ++ z_utils:url_encode(z_convert:to_list(Type))
             ++ "/_bulk",
     case httpc:request(post, 
-                       {z_convert:to_list(Url1), [], "application/json", Body},
-                       httpc_headers(Site),
+                       {z_convert:to_list(Url1), httpc_headers(Site), "application/json", Body},
+                       [],
                        httpc_options()) 
     of
         {ok, {{_Http, 200, _Ok}, _Hs, _Body}} ->
@@ -272,8 +272,8 @@ define_mappings_1([Type|Types], Site, Url, Added) ->
             ++ "/_mapping/"
             ++ z_utils:url_encode(z_convert:to_list(Type)),
     case httpc:request(post, 
-                       {z_convert:to_list(Url1), [], "application/json", Body}, 
-                       httpc_headers(Site),
+                       {z_convert:to_list(Url1), httpc_headers(Site), "application/json", Body}, 
+                       [],
                        httpc_options())
     of
         {ok, {{_Http, 200, _Ok}, _Hs, _Body}} ->
@@ -316,8 +316,8 @@ ensure_index(Site, Url) ->
             ++ "/"
             ++ "zotonic-log-" ++ z_utils:url_encode(z_convert:to_list(Site)), % Add the site as ES index
     case httpc:request(post,
-                       {z_convert:to_list(Url1), [], "application/json", Body},
-                       httpc_headers(Site),
+                       {z_convert:to_list(Url1), httpc_headers(Site), "application/json", Body},
+                       [],
                        httpc_options()) 
     of
         {ok, {{_Http, 200, _Ok}, _Hs, _Body}} ->
