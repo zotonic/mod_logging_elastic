@@ -8,8 +8,8 @@
     <div class="modal-body">
         <div class="form-group row">
             <label class="control-label">{_ Elastic Search URL _}</label>
-            <input type="text" id="{{ #url }}" name="url" 
-                   value="{{ m.config.mod_logging_elastic.url.value|escape }}" class="do_autofocus col-lg-4 col-md-4 form-control"
+            <input type="text" id="{{ #url }}" name="elastic_url" 
+                   value="{{ m.config.mod_logging_elastic.elastic_url.value|escape }}" class="do_autofocus col-lg-4 col-md-4 form-control"
                    placeholder="http://127.0.0.1:9200/" />
         </div>
         <div class="form-group row">
