@@ -179,7 +179,7 @@ ensure_type_mappings([], State) ->
     State;
 ensure_type_mappings(List, #state{mappings=Mappings, site=Site} = State) ->
     Keys = proplists:get_keys(List),
-    Added = define_mappings(Keys -- Mappings, Site),
+    Added = define_mappings(Keys -- Mappings, List, Site),
     State#state{mappings=Added++Mappings}.
 
 elastic_url(Site) when is_atom(Site) ->
@@ -207,8 +207,8 @@ get_msg_props(#zlog{props=Props}) when is_list(Props) ->
 
 add_log_props(#zlog{user_id=UserId, timestamp=Timestamp}, Props) ->
     [
-        {'_user_id', UserId},
-        {'_timestamp', z_dateformat:format(to_universal_time(Timestamp), "Y-m-d\\TH:i:s", [])}
+        {'zlog_user_id', UserId},
+        {'zlog_timestamp', z_dateformat:format(to_universal_time(Timestamp), "c", [])}
         | Props
     ].
 
@@ -255,17 +255,14 @@ commit_batch(Type, List, Site, Url) ->
             Other
     end.
 
-define_mappings(Types, Site) ->
-    define_mappings_1(Types, Site, elastic_url(Site), []).
+define_mappings(Types, BatchList, Site) ->
+    define_mappings_1(Types, BatchList, Site, elastic_url(Site), []).
 
-define_mappings_1([], _Site, _Url, Added) ->
+define_mappings_1([], _BatchList, _Site, _Url, Added) ->
     Added;
-define_mappings_1([Type|Types], Site, Url, Added) ->
-    Body = iolist_to_binary([
-                <<"{\"">>, z_convert:to_binary(Type), <<"\":{">>,
-                    <<"\"_timestamp\":{ \"enabled\":true, \"store\":true }">>,
-                <<"}}">>
-            ]),
+define_mappings_1([Type|Types], BatchList, Site, Url, Added) ->
+    JSON = mappings_from_values(hd(proplists:get_value(Type, BatchList)), []),
+    Body = iolist_to_binary(mochijson2:encode({struct, [{Type, {struct, [{properties, JSON}]}}]})),
     Url1 = z_string:trim_right(z_convert:to_list(Url), $/)
             ++ "/"
             ++ "zotonic-log-" ++ z_utils:url_encode(z_convert:to_list(Site)) % Add the site as ES index
@@ -277,18 +274,57 @@ define_mappings_1([Type|Types], Site, Url, Added) ->
                        httpc_options())
     of
         {ok, {{_Http, 200, _Ok}, _Hs, _Body}} ->
-            lager:debug("[~p] Added _timestamp mapping for ~p log events to Elastic Search index 'zotonic-log-~p'", [Site, Type, Site]),
-            define_mappings_1(Types, Site, Url, [Type|Added]);
+            lager:debug("[~p] Added mappings for ~p log events to Elastic Search index 'zotonic-log-~p'", [Site, Type, Site]),
+            define_mappings_1(Types, BatchList, Site, Url, [Type|Added]);
         {ok, {{_Http, 404, _Ok}, _Hs, _Body}} ->
-            lager:debug("[~p] Added _timestamp mapping for ~p log events to Elastic Search index 'zotonic-log-~p'", [Site, Type, Site]),
+            lager:debug("[~p] Added mappings for ~p log events to Elastic Search index 'zotonic-log-~p'", [Site, Type, Site]),
             case ensure_index(Site, Url) of
-                ok -> define_mappings_1([Type|Types], Site, Url, [Type|Added]);
+                ok -> define_mappings_1([Type|Types], BatchList, Site, Url, [Type|Added]);
                 _Other -> Added
             end;
         Other ->
-            lager:error("[~p] Adding _timestamp mapping for ~p to elastic returned ~p", [Site, Type, Other]),
-            define_mappings_1(Types, Site, Url, Added)
+            lager:error("[~p] Adding mappings for ~p to elastic returned ~p", [Site, Type, Other]),
+            define_mappings_1(Types, BatchList, Site, Url, Added)
     end.
+
+mappings_from_values([], Acc) ->
+    lists:reverse(Acc);
+mappings_from_values([{K,V}|Rest], Acc) ->
+    case guess_type(z_convert:to_binary(K), V) of
+        undefined ->
+            mappings_from_values(Rest, Acc);
+        Type ->
+            Mapping = {K, {struct, [{type, Type}]}},
+            mappings_from_values(Rest, [Mapping|Acc])
+    end.
+
+guess_type(<<"zlog_timestamp">>, _) ->
+    <<"date">>;
+guess_type(<<"timestamp">>, _) ->
+    <<"date">>;
+guess_type(<<"timestamp_", _/binary>>, _) ->
+    <<"date">>;
+guess_type(<<"date">>, _) ->
+    <<"date">>;
+guess_type(<<"date_", _/binary>>, _) ->
+    <<"date">>;
+guess_type(<<"created">>, _) ->
+    <<"date">>;
+guess_type(<<"modified">>, _) ->
+    <<"date">>;
+guess_type(<<"is_", _/binary>>, _) ->
+    <<"boolean">>;
+guess_type(_, V) when is_integer(V) ->
+    <<"integer">>;
+guess_type(_, {{Y,M,D},{H,I,S}}) 
+    when is_integer(Y), is_integer(M), is_integer(D),
+         is_integer(H), is_integer(I), is_integer(S) ->
+    <<"date">>;
+guess_type(_, V) when is_boolean(V) ->
+    <<"boolean">>;
+guess_type(_, _) ->
+    undefined.
+
 
 httpc_options() ->
     [
