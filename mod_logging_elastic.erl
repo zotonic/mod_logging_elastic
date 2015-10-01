@@ -374,5 +374,23 @@ ensure_index(Site, Url) ->
 
 
 json(Props) ->
-    iolist_to_binary(mochijson2:encode(z_convert:to_json(Props))).
+    iolist_to_binary(mochijson2:encode(z_convert:to_json(maybe_map_values(Props)))).
+
+maybe_map_values(Props) ->
+    [ maybe_map_value(P) || P <- Props ].
+
+%% Kibana wants country codes in uppercase
+maybe_map_value({address_country, V}) when is_binary(V) ->
+    {address_country, z_string:to_upper(V)};
+maybe_map_value({mail_country, V}) when is_binary(V) ->
+    {mail_country, z_string:to_upper(V)};
+maybe_map_value({country, V}) when is_binary(V) ->
+    {country, z_string:to_upper(V)};
+maybe_map_value({K, V} = P) when is_binary(V) ->
+    case z_convert:to_binary(K) of
+        <<"country_", _/binary>> -> {K, z_string:to_upper(V)};
+        _ -> P
+    end;
+maybe_map_value(P) ->
+    P.
 
