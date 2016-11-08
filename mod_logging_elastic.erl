@@ -152,7 +152,9 @@ set_defaults(Msg, _Context) ->
 
 queue_msg(#zlog{} = Msg, State) ->
     Type = get_msg_type(Msg),
-    Props = [ rename_field(KV) || KV <- binary_lists(add_log_props(Msg, get_msg_props(Msg))) ],
+    Context = z_context:new(State#state.site),
+    LogProps = binary_lists(add_log_props(Msg, get_msg_props(Msg, Context))),
+    Props = [ rename_field(KV) || KV <- LogProps ],
     State#state{batches=dict:append(Type, Props, State#state.batches), count=State#state.count+1}.
 
 binary_lists(Ps) ->
@@ -196,13 +198,22 @@ get_msg_type(#zlog{type=undefined, props=#log_message{type=Type}}) ->
 get_msg_type(#zlog{type=Type}) ->
     Type.
 
-get_msg_props(#zlog{props=#log_email{} = Email}) ->
+get_msg_props(#zlog{props=#log_email{} = Email}, Context) ->
     Ps = lists:zip(record_info(fields, log_email), tl(tuple_to_list(Email))),
-    proplists:delete(props, Ps);
-get_msg_props(#zlog{props=#log_message{} = Msg}) ->
+    ?DEBUG(Ps),
+    Ps1 = add_user_props(Email#log_email.to_id, [
+            {address_country, country_to},
+            {pref_language, language_to}
+        ], Ps, Context),
+    Ps2 = add_user_props(Email#log_email.from_id, [
+            {address_country, country_from},
+            {pref_language, language_from}
+        ], Ps1, Context),
+    proplists:delete(props, Ps2);
+get_msg_props(#zlog{props=#log_message{} = Msg}, _Context) ->
     Ps = lists:zip(record_info(fields, log_message), tl(tuple_to_list(Msg))),
     proplists:delete(props, Ps);
-get_msg_props(#zlog{props=Props}) when is_list(Props) ->
+get_msg_props(#zlog{props=Props}, _Context) when is_list(Props) ->
     Props.
 
 add_log_props(#zlog{user_id=UserId, timestamp=Timestamp}, Props) ->
@@ -211,6 +222,23 @@ add_log_props(#zlog{user_id=UserId, timestamp=Timestamp}, Props) ->
         {'zlog_timestamp', z_dateformat:format(to_universal_time(Timestamp), "c", [])}
         | Props
     ].
+
+add_user_props(UserId, PropMap, Props, Context) ->
+    lists:foldl(fun({From,To}, Acc) ->
+                    case m_rsc:p_no_acl(UserId, From, Context) of
+                        undefined ->
+                            Acc;
+                        Value when is_binary(Value); is_integer(Value); is_float(Value)  ->
+                            [{To, Value} | Acc];
+                        Value when is_atom(Value) ->
+                            [{To, z_convert:to_binary(Value)} | Acc];
+                        _OtherValue ->
+                            % Drop more complex values
+                            Acc
+                    end
+                end,
+                Props,
+                PropMap).
 
 to_universal_time({A,B,C} = Tm) when is_integer(A), is_integer(B), is_integer(C) ->
     calendar:now_to_universal_time(Tm);
