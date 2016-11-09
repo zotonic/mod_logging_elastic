@@ -200,7 +200,6 @@ get_msg_type(#zlog{type=Type}) ->
 
 get_msg_props(#zlog{props=#log_email{} = Email}, Context) ->
     Ps = lists:zip(record_info(fields, log_email), tl(tuple_to_list(Email))),
-    ?DEBUG(Ps),
     Ps1 = add_user_props(Email#log_email.to_id, [
             {address_country, country_to},
             {pref_language, language_to}
